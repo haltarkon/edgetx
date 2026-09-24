@@ -406,6 +406,9 @@ void serialSetBaudrate(uint8_t port_nr, uint32_t baudrate)
 int serialGetModePort(int mode)
 {
   for (int p = 0; p < MAX_SERIAL_PORTS; p++) {
+    // Settings imported from another radio can assign a mode to a port this
+    // radio does not have; such a port must not hide the mode from others.
+    if (!serialGetPort(p)) continue;
     if (serialGetMode(p) == mode) return p;
   }
   return -1;  
