@@ -27,6 +27,7 @@
 
 #include "edgetx.h"
 #include "switches.h"
+#include "channel_stream.h"
 #include "hal/usb_driver.h"
 
 #include "hal/watchdog_driver.h"
@@ -182,6 +183,7 @@ void mixerTask()
 
       doMixerCalculations();
       pulsesSendChannels();
+      channelStreamSend(t0);
       doMixerPeriodicUpdates();
 
       // TODO: what are these for???
