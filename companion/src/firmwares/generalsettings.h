@@ -167,6 +167,7 @@ class GeneralSettings {
       AUX_SERIAL_DEBUG,
       AUX_SERIAL_SPACEMOUSE,
       AUX_SERIAL_EXT_MODULE,
+      AUX_SERIAL_CHANNELS,
       AUX_SERIAL_COUNT
     };
 

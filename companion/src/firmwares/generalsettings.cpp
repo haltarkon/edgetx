@@ -535,6 +535,8 @@ QString GeneralSettings::serialModeToString(int value)
       return tr("SpaceMouse");
     case AUX_SERIAL_EXT_MODULE:
       return tr("External module");
+    case AUX_SERIAL_CHANNELS:
+      return tr("Channels");
     default:
       return CPN_STR_UNKNOWN_ITEM;
   }
@@ -612,6 +614,9 @@ AbstractStaticItemModel * GeneralSettings::serialModeItemModel()
 
     if (i == AUX_SERIAL_EXT_MODULE) {
       contexts &= ~(AUX2Context | VCPContext);
+    }
+    else if (i == AUX_SERIAL_CHANNELS) {
+      contexts = VCPContext;
     }
     else if (i == AUX_SERIAL_TELE_IN ||
              i == AUX_SERIAL_SBUS_TRAINER ||
