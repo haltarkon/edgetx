@@ -50,7 +50,7 @@
 #define TR_TRNMODE                     "OFF",TR("+=","Дод."),TR(":=","Замін.")
 #define TR_TRNCHN                      "CH1","CH2","CH3","CH4"	/* use english */
 
-#define TR_AUX_SERIAL_MODES            "OFF","Дзерк. телем.","Вх. телем.","SBUS Трен.","LUA","CLI","GPS","Відлаг.","SpaceMouse","Зовн. модуль"	/* for untranslated - use english */
+#define TR_AUX_SERIAL_MODES            "OFF","Дзерк. телем.","Вх. телем.","SBUS Трен.","LUA","CLI","GPS","Відлаг.","SpaceMouse","Зовн. модуль","Канали"	/* for untranslated - use english */
 #define TR_SWTYPES                     "Немає","Перемик.","2поз. пер.","3поз. пер."
 #define TR_POTTYPES                    "Немає","Потенц.",TR("Пот. з крок.","Потенц. з кроком"),"Повзун.",TR("Баг.поз.пер.","Багатопозиц. перем."),"Вісь X","Вісь Y","Перемик."
 #define TR_VPERSISTENT                 "OFF","Політ","Ручн. скид."	/* for untranslated - use english */

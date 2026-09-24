@@ -23,6 +23,7 @@
 #include "mixer_scheduler.h"
 #include "tasks/mixer_task.h"
 #include "hal/usb_driver.h"
+#include "channel_stream.h"
 
 bool mixerSchedulerWaitForTrigger(uint8_t timeoutMs)
 {
@@ -76,7 +77,8 @@ uint16_t getMixerSchedulerPeriod()
   }
 #endif
 #if defined(STM32) && !defined(SIMU)
-  if (getSelectedUsbMode() == USB_JOYSTICK_MODE) {
+  if (getSelectedUsbMode() == USB_JOYSTICK_MODE ||
+      (getSelectedUsbMode() == USB_SERIAL_MODE && channelStreamActive())) {
     return MIXER_SCHEDULER_JOYSTICK_PERIOD_US;
   }
 #endif

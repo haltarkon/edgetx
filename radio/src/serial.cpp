@@ -38,6 +38,7 @@
 #if !defined(BOOT)
   #include "edgetx.h"
   #include "lua/lua_api.h"
+  #include "channel_stream.h"
 #else
   #include "dataconstants.h"
 #endif
@@ -254,6 +255,10 @@ static void serialSetCallBacks(int mode, void* ctx, const etx_serial_port_t* por
     break;
 #endif
 
+  case UART_MODE_CHANNELS:
+    channelStreamSetSerialDriver(ctx, drv);
+    break;
+
 #if defined(CONFIGURABLE_MODULE_PORT) and !defined(BOOT)
   case UART_MODE_EXT_MODULE:
     if (port && !ctx) { // de-init
@@ -337,6 +342,11 @@ static void serialSetupPort(int mode, etx_serial_init& params)
     params.direction = ETX_Dir_TX_RX;
     break;
 #endif
+
+  case UART_MODE_CHANNELS:
+    params.baudrate = CHANNEL_STREAM_BAUDRATE;
+    params.direction = ETX_Dir_TX;
+    break;
 
 #endif // BOOT
   }

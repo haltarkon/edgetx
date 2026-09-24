@@ -52,7 +52,7 @@
 #define TR_TRNMODE                     "OFF",TR("+=","Lisää"),TR(":=","Korvaa")
 #define TR_TRNCHN                      "CH1","CH2","CH3","CH4"
 
-#define TR_AUX_SERIAL_MODES            "POIS","S-Port Pelik","Telemetry In","SBUS Trainer","LUA","CLI","GPS","Debug","SpaceMouse","External module"
+#define TR_AUX_SERIAL_MODES            "POIS","S-Port Pelik","Telemetry In","SBUS Trainer","LUA","CLI","GPS","Debug","SpaceMouse","External module","Kanavat"
 #define TR_SWTYPES                     "None","Toggle","2POS","3POS"
 #define TR_POTTYPES                    "None",TR("Pot","Potikka"),TR("Pot w. det","Pot with detent"),"Slider",TR("Multipos","Monias. Kytkin"),"Axis X","Axis Y","Switch"
 #define TR_VPERSISTENT                 "OFF","Flight","Manual Reset"

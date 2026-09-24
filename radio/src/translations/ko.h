@@ -49,7 +49,7 @@
 #define TR_TRNMODE                    "끔", TR("+=", "합치기"), TR(":=", "대체")
 #define TR_TRNCHN                     "채널1", "채널2", "채널3", "채널4"
 
-#define TR_AUX_SERIAL_MODES           "끔", "텔레미러", "텔레입력", "SBUS 트레이너", "LUA", "CLI", "GPS", "디버그", "SpaceMouse", "외부 모듈"
+#define TR_AUX_SERIAL_MODES           "끔", "텔레미러", "텔레입력", "SBUS 트레이너", "LUA", "CLI", "GPS", "디버그", "SpaceMouse", "외부 모듈","채널"
 #define TR_SWTYPES                    "없음", "토글", "2단", "3단"
 #define TR_POTTYPES                   "없음", "다이얼", TR("클릭 다이얼", "중심 클릭 다이얼"), "슬라이더", TR("다단", "다단 스위치"), "X축", "Y축", "스위치"
 #define TR_VPERSISTENT                "끔", "비행 중", "수동 초기화"

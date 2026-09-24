@@ -50,7 +50,7 @@
 #define TR_VBLMODE             TR("Wył","Wyłącz"),TR("Przy","Przycisk"),TR("Drąż","Drązki"),"Oba",TR("Zał","Włącz")
 #define TR_TRNMODE             "Wył",TR("+=","Dodaj"),TR(":=","Zastąp")
 #define TR_TRNCHN              "KN1","KN2","KN3","KN4"
-#define TR_AUX_SERIAL_MODES    "Wyłącz","S-Port Kopia","Telemetria","Trener SBUS","LUA","CLI","GPS","Debug","SpaceMouse","Moduł zewnętrzny"
+#define TR_AUX_SERIAL_MODES    "Wyłącz","S-Port Kopia","Telemetria","Trener SBUS","LUA","CLI","GPS","Debug","SpaceMouse","Moduł zewnętrzny","Kanały"
 #define TR_SWTYPES             "Brak","Chwil.","2POZ","3POZ"
 #define TR_POTTYPES            "Brak","Pot.",TR("Pot. z. zap.","Pot. z zapadką"),"Suwak",TR("Wielopoz.","Przeł.wielopoz."),"Oś X","Oś Y","Przełącznik"
 #define TR_VPERSISTENT         "Wyłącz","Lot","Ręczny Reset"
