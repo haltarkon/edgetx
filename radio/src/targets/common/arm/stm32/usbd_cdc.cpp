@@ -228,6 +228,39 @@ static int8_t VCP_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   /* USER CODE END 5 */
 }
 
+/*
+  Starts an IN transfer with the next contiguous part of the TX buffer if the
+  endpoint is idle. Runs in the USB interrupt, or with interrupts disabled.
+*/
+static void startTransmit()
+{
+  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+
+  if (hcdc == nullptr || hcdc->TxState != 0)
+    return;
+
+  if (APP_Tx_ptr_out == APP_TX_DATA_SIZE)
+    APP_Tx_ptr_out = 0;
+
+  if(APP_Tx_ptr_out == APP_Tx_ptr_in)
+    return;
+
+  size_t length = 0;
+
+  if(APP_Tx_ptr_out > APP_Tx_ptr_in) /* rollback */
+  {
+    length = APP_TX_DATA_SIZE - APP_Tx_ptr_out;
+  }
+  else
+  {
+    length = APP_Tx_ptr_in - APP_Tx_ptr_out;
+  }
+
+  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &UserTxBufferFS[APP_Tx_ptr_out], length);
+  if (USBD_CDC_TransmitPacket(&hUsbDeviceFS) == USBD_OK)
+    APP_Tx_ptr_out += length;
+}
+
 /**
   * @brief  VCP_TransmitCplt_FS
   *         Data transmitted callback
@@ -248,49 +281,27 @@ static int8_t VCP_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   UNUSED(Len);
   UNUSED(epnum);
   /* USER CODE END 13 */
+
+  // Send what was queued meanwhile now rather than at a later start of frame
+  startTransmit();
   return result;
 }
 
 static int8_t VCP_StartOfFrame_FS()
 {
-  uint8_t result = USBD_OK;
+#if CDC_IN_FRAME_INTERVAL > 0
   static uint8_t FrameCount = 0;    // modified by OpenTX
 
-  if (FrameCount++ >= CDC_IN_FRAME_INTERVAL)     // modified by OpenTX
-  {
-    /* Reset the frame counter */
-    FrameCount = 0;
+  if (FrameCount++ < CDC_IN_FRAME_INTERVAL)     // modified by OpenTX
+    return USBD_OK;
 
-    /* Check the data to be sent through IN pipe */
-    USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+  /* Reset the frame counter */
+  FrameCount = 0;
+#endif
 
-    if (hcdc->TxState != 0)
-      return USBD_OK;
-
-    if (APP_Tx_ptr_out == APP_TX_DATA_SIZE)
-      APP_Tx_ptr_out = 0;
-
-    if(APP_Tx_ptr_out == APP_Tx_ptr_in)
-      return USBD_OK;
-
-    size_t length = 0;
-
-    if(APP_Tx_ptr_out > APP_Tx_ptr_in) /* rollback */
-    {
-      length = APP_TX_DATA_SIZE - APP_Tx_ptr_out;
-    }
-    else
-    {
-      length = APP_Tx_ptr_in - APP_Tx_ptr_out;
-    }
-
-    USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &UserTxBufferFS[APP_Tx_ptr_out], length);
-    result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
-    if(result == USBD_OK)
-      APP_Tx_ptr_out += length;
-  }
-
-  return result;
+  /* Check the data to be sent through IN pipe */
+  startTransmit();
+  return USBD_OK;
 }
 
 
@@ -336,6 +347,51 @@ void usbSerialPutc(void*, uint8_t c)
   APP_Tx_ptr_in = (APP_Tx_ptr_in + 1) % APP_TX_DATA_SIZE;
 
   if (!prim) __enable_irq();
+}
+
+// Free space that does not hold data the endpoint is still sending: the
+// transfer in progress covers the TxLength bytes just behind APP_Tx_ptr_out,
+// which is where the free space ends.
+static uint32_t txFreeSpace()
+{
+  uint32_t space = usbSerialFreeSpace();
+  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+  if (hcdc != nullptr && hcdc->TxState != 0) {
+    space = space > hcdc->TxLength ? space - hcdc->TxLength : 0;
+  }
+  return space;
+}
+
+// Queues the whole buffer, or drops it if it does not fit, so the host never
+// receives part of it, and starts sending at once if the endpoint is idle.
+static void usbSerialSendBuffer(void*, const uint8_t* data, uint32_t size)
+{
+  if (!cdcConnected) return;
+
+  uint32_t prim = __get_PRIMASK();
+  __disable_irq();
+
+  if (size <= txFreeSpace()) {
+    uint32_t in = APP_Tx_ptr_in;
+    uint32_t first = APP_TX_DATA_SIZE - in;
+    if (first > size) first = size;
+    memcpy(&UserTxBufferFS[in], data, first);
+    memcpy(UserTxBufferFS, data + first, size - first);
+    APP_Tx_ptr_in = (in + size) % APP_TX_DATA_SIZE;
+    startTransmit();
+  }
+
+  if (!prim) __enable_irq();
+}
+
+// True once the host has taken everything queued so far
+static uint8_t usbSerialTxCompleted(void*)
+{
+  if (!cdcConnected) return true;
+
+  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+  uint32_t out = APP_Tx_ptr_out == APP_TX_DATA_SIZE ? 0 : APP_Tx_ptr_out;
+  return out == APP_Tx_ptr_in && (hcdc == nullptr || hcdc->TxState == 0);
 }
 
 /**
@@ -401,7 +457,8 @@ static const etx_serial_driver_t usbSerialDriver = {
   .init = usbSerialInit,
   .deinit = nullptr,
   .sendByte = usbSerialPutc,
-  .sendBuffer = nullptr,
+  .sendBuffer = usbSerialSendBuffer,
+  .txCompleted = usbSerialTxCompleted,
   .waitForTxCompleted = nullptr,
   .getByte = nullptr,
   .clearRxBuffer = nullptr,

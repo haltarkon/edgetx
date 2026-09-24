@@ -65,11 +65,15 @@
   * @{
   */
 
+/* Number of frames between IN transfers started at a start of frame. Data
+   queued during a transfer is sent when it completes, and a whole buffer
+   written with sendBuffer() is sent at once, so the only data that waits for
+   a start of frame is data written while the endpoint was idle. */
+#define CDC_IN_FRAME_INTERVAL        0
+
 #if defined(STM32F2)
-#define CDC_IN_FRAME_INTERVAL        4    /* Number of frames between IN transfers */
 #define APP_TX_DATA_SIZE             512  /* Total size of IN buffer: APP_TX_DATA_SIZE*8/MAX_BAUDARATE*1000 should be > CDC_IN_FRAME_INTERVAL */
 #else
-#define CDC_IN_FRAME_INTERVAL        15    /* Number of frames between IN transfers */
 #define APP_TX_DATA_SIZE             2048  /* Total size of IN buffer: APP_TX_DATA_SIZE*8/MAX_BAUDARATE*1000 should be > CDC_IN_FRAME_INTERVAL */
 #endif
 
