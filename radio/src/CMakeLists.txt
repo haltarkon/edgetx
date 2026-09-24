@@ -395,6 +395,7 @@ set(SRC
   trainer.cpp
   model_init.cpp
   serial.cpp
+  channel_stream.cpp
   audio.cpp
   model_audio.cpp
   sbus.cpp

@@ -48,7 +48,7 @@
 #define TR_TRNMODE                     "OFF",TR("+=","加算"),TR(":=","置換")
 #define TR_TRNCHN                      "CH1","CH2","CH3","CH4"
 
-#define TR_AUX_SERIAL_MODES            "OFF","テレメトリーミラー","テレメトリーIN","SBUSトレーナー","LUAスクリプト","CLI","GPS","デバッグ","SpaceMouse","外部モジュール"
+#define TR_AUX_SERIAL_MODES            "OFF","テレメトリーミラー","テレメトリーIN","SBUSトレーナー","LUAスクリプト","CLI","GPS","デバッグ","SpaceMouse","外部モジュール","チャンネル"
 #define TR_SWTYPES                     "なし","トグル","2POS","3POS"
 #define TR_POTTYPES                    "なし","ダイヤル",TR("Pot w. det","ダイヤル(ノッチ)"),"スライダー",TR("Multipos","マルチPOS-Sw"),"X軸","Y軸","スイッチ"
 #define TR_VPERSISTENT                 "無効","飛行時","手動リセット"

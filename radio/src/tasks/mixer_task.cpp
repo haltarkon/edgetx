@@ -25,6 +25,7 @@
 
 #include "opentx.h"
 #include "switches.h"
+#include "channel_stream.h"
 #include "hal/usb_driver.h"
 
 #include "hal/watchdog_driver.h"
@@ -193,6 +194,7 @@ TASK_FUNCTION(mixerTask)
 
       doMixerCalculations();
       pulsesSendChannels();
+      channelStreamSend(t0);
       doMixerPeriodicUpdates();
 
       // TODO: what are these for???

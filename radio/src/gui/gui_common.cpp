@@ -485,6 +485,11 @@ bool isSerialModeAvailable(uint8_t port_nr, int mode)
   if (port_nr == SP_VCP &&
       (mode == UART_MODE_TELEMETRY || mode == UART_MODE_SBUS_TRAINER))
     return false;
+
+  // The channel stream is only sent over USB-VCP
+  if (port_nr != SP_VCP && mode == UART_MODE_CHANNELS) return false;
+#else
+  if (mode == UART_MODE_CHANNELS) return false;
 #endif
 
   auto p = serialGetModePort(mode);
