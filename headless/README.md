@@ -259,6 +259,13 @@ by channel, a dozen lines.
    `evalUIFunctions()` for radio and model special functions (volume, backlight, logging, flight
    reset, screenshot, set screen).
 
+A call too short to reach the next tick (`etx_step(4)`) still runs `doMixerCalculations()` once,
+with no time passed, so the outputs answer the inputs as they are now. EdgeTX's mixer task does
+the same on a radio: it runs at the RF module's rate, up to 1 kHz, between two ticks of the
+10 ms clock, and `evalMixes()` is handed the ticks since its last run, zero included. A host
+that reads channels more often than every 10 ms therefore never gets the previous inputs'
+answer.
+
 Pulses are not generated; `channelOutputs` (what they are made from) and the PPM widths are
 exposed instead.
 
@@ -319,7 +326,7 @@ number of elements written (none for `max` ≤ 0).
 | `int32 etx_set_key(int32 key, int32 pressed)` | any other key (`EnumKeys`) |
 | `int32 etx_set_host_axis(int32 index, int32 value)` | *added* — host axis `index` (`describe().hostAxes[].index`) to −1024..1024 (clamped), as the host reports it. An error (−5) for an index this radio lacks: every index on a radio without host inputs |
 | `int32 etx_set_host_button(int32 index, int32 value)` | *added* — host button `index` (`describe().hostButtons[].index`) to how far it is pressed, −1024 released..1024 pressed; it is on, as a switch, above zero. The first `MAX_HOST_ANALOG_BUTTONS` also read as sources with that value |
-| `int32 etx_step(int32 ms)` | advance; returns ticks run |
+| `int32 etx_step(int32 ms)` | advance; returns ticks run (with none, the mixer still runs once over the current inputs) |
 | `uint32 etx_get_time()` | `g_tmr10ms` |
 | `int32 etx_get_channels(int16*, int32)` | `channelOutputs`: −1024..1024 (±1536 with extended limits) |
 | `int32 etx_get_pulses_us(uint16*, int32)` | PPM widths in **half microseconds**: `clamp(out, ±R) + 2 × (1500 + ppmCenter)` (`pulses/ppm.cpp`) |

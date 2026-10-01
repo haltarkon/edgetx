@@ -938,6 +938,14 @@ ETX_EXPORT(etx_set_host_button) int32_t etx_set_host_button(int32_t index, int32
 
 // Advance the radio by `ms` milliseconds in 10 ms ticks; a remainder is kept
 // for the next call. Returns the number of ticks run.
+//
+// The outputs are fresh on return whether or not a tick ran: a call too short
+// to reach the next tick still runs the mixer over the inputs as they are now,
+// with no time passed. That is what a radio does - its mixer task runs at the
+// RF module's rate, up to 1 kHz, between two 10 ms ticks of its clock
+// (doMixerCalculations() hands evalMixes() the ticks since its last run, zero
+// included) - and it is what lets the host read channels more often than every
+// 10 ms without getting the previous inputs' answer.
 ETX_EXPORT(etx_step) int32_t etx_step(int32_t ms)
 {
   if (ms <= 0) return 0;
@@ -947,6 +955,12 @@ ETX_EXPORT(etx_step) int32_t etx_step(int32_t ms)
     s_pendingMs -= 10;
     runTick();
     ticks++;
+  }
+  // Not before the first tick after a reset: that run starts the flight mode
+  // and the switches over (firstMixerRunAfterReset()).
+  if (ticks == 0 && !s_freshStart) {
+    primeAnalogFilter();
+    doMixerCalculations();
   }
   return ticks;
 }
