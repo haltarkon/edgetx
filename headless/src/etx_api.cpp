@@ -11,6 +11,7 @@
 //
 // All exports are called from one thread, one at a time.
 
+#include "etx_host_inputs.h"
 #include "etx_json.h"
 #include "etx_port_impl.h"
 
@@ -704,6 +705,12 @@ ETX_EXPORT(etx_init) int32_t etx_init()
   // (storageReadAll() + storageFormat()), then Mode 2.
   memset(&g_eeGeneral, 0, sizeof(g_eeGeneral));
   generalDefault();
+#if defined(ETX_VIRTUAL_RADIO)
+  // generalDefault() calibrates the base radio's 6-position pot; here that slot
+  // belongs to no input, and EdgeTX's writer would give the entry no name.
+  for (int i = adcGetMaxCalibratedInputs(); i < (int)DIM(g_eeGeneral.calib); i++)
+    memset(&g_eeGeneral.calib[i], 0, sizeof(g_eeGeneral.calib[i]));
+#endif
   g_eeGeneral.stickMode = 1;
   g_eeGeneral.chkSum = evalChkSum();
   postRadioSettingsLoad();
@@ -894,6 +901,39 @@ ETX_EXPORT(etx_set_key) int32_t etx_set_key(int32_t key, int32_t pressed)
   return ETX_OK;
 }
 
+// Host inputs (radio/src/hal/host_inputs.h; the virtual radio only): the
+// controls of whatever the host can read, each a source of the mixer in its
+// own right. `index` is describe().hostAxes[].index / hostButtons[].index.
+//
+// An axis takes its position -1024..1024, as the host reports it: no
+// calibration, no inversion, no dead zone -- a model line's weight and curve
+// are where a pilot shapes it. A button takes how far it is pressed, -1024
+// released .. 1024 pressed, and is on (as a switch) above zero; what a press
+// means -- held, latched, one of a group -- is the host's decision, made
+// before it gets here. Both return -ETX_ERR_ARGUMENT for an index this radio
+// lacks, which is every index on a radio without host inputs. *added*
+ETX_EXPORT(etx_set_host_axis) int32_t etx_set_host_axis(int32_t index, int32_t value)
+{
+#if defined(HOST_INPUTS)
+  if (etxHostSetAxis(index, value)) return ETX_OK;
+#else
+  (void)index;
+  (void)value;
+#endif
+  return -ETX_ERR_ARGUMENT;
+}
+
+ETX_EXPORT(etx_set_host_button) int32_t etx_set_host_button(int32_t index, int32_t value)
+{
+#if defined(HOST_INPUTS)
+  if (etxHostSetButton(index, value)) return ETX_OK;
+#else
+  (void)index;
+  (void)value;
+#endif
+  return -ETX_ERR_ARGUMENT;
+}
+
 // ---- exports: time --------------------------------------------------------------
 
 // Advance the radio by `ms` milliseconds in 10 ms ticks; a remainder is kept
@@ -950,12 +990,26 @@ ETX_EXPORT(etx_get_mixer_outputs) int32_t etx_get_mixer_outputs(int16_t* out, in
   return n;
 }
 
-// Bit n set: channel n+1 has at least one mix line (isChannelUsed()).
+// Bit n set: channel n+1 has at least one mix line the mixer runs. Counted as
+// evalFlightModeMixes() walks the lines, not with isChannelUsed(): that one
+// stops at the first line without a source on every radio, while the mixer
+// stops there only on a B&W radio and skips the line on a colour one -- so a
+// colour model with an empty line would have its later channels mixed and
+// reported unused.
 ETX_EXPORT(etx_get_used_channels) uint32_t etx_get_used_channels()
 {
   uint32_t mask = 0;
-  for (int i = 0; i < MAX_OUTPUT_CHANNELS && i < 32; i++)
-    if (isChannelUsed(i)) mask |= 1u << i;
+  for (int i = 0; i < MAX_MIXERS; i++) {
+    const MixData* md = mixAddress(i);
+    if (md->srcRaw == 0) {
+#if defined(COLORLCD)
+      continue;
+#else
+      break;
+#endif
+    }
+    if (md->destCh < MAX_OUTPUT_CHANNELS && md->destCh < 32) mask |= 1u << md->destCh;
+  }
   return mask;
 }
 

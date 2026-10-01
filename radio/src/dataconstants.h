@@ -26,6 +26,9 @@
 #include "board.h"
 #include "storage/yaml/yaml_defs.h"
 #include "gvars.h"
+#if defined(HOST_INPUTS)
+#include "hal/host_inputs.h"
+#endif
 
 #if defined(EXPORT)
   #define LUA_EXPORT(...)              LEXP(__VA_ARGS__)
@@ -436,6 +439,11 @@ enum SwitchSources {
   SWSRC_FIRST_TRIM SKIP,
   SWSRC_LAST_TRIM SKIP = SWSRC_FIRST_TRIM + 2 * MAX_TRIMS - 1,
 
+#if defined(HOST_INPUTS)
+  SWSRC_FIRST_HOST_BUTTON SKIP,
+  SWSRC_LAST_HOST_BUTTON SKIP = SWSRC_FIRST_HOST_BUTTON + MAX_HOST_BUTTONS - 1,
+#endif
+
   SWSRC_FIRST_LOGICAL_SWITCH SKIP,
   SWSRC_LAST_LOGICAL_SWITCH SKIP = SWSRC_FIRST_LOGICAL_SWITCH + MAX_LOGICAL_SWITCHES - 1,
 
@@ -520,6 +528,14 @@ enum MixSources {
   MIXSRC_LAST_SPACEMOUSE SKIP = MIXSRC_SPACEMOUSE_F,
 #endif
 
+// Must stay below MIXSRC_LAST or the mixer's source picker can't offer them
+#if defined(HOST_INPUTS)
+  MIXSRC_FIRST_HOST_AXIS SKIP,
+  MIXSRC_LAST_HOST_AXIS SKIP = MIXSRC_FIRST_HOST_AXIS + MAX_HOST_AXES - 1,
+  MIXSRC_FIRST_HOST_BUTTON SKIP,
+  MIXSRC_LAST_HOST_BUTTON SKIP = MIXSRC_FIRST_HOST_BUTTON + MAX_HOST_ANALOG_BUTTONS - 1,
+#endif
+
   MIXSRC_MIN,
   MIXSRC_MAX,
 
@@ -583,6 +599,13 @@ enum MixSources {
 #endif
 
 constexpr int16_t MIXSRC_MAX_VALUE = 30000;
+
+#if defined(HOST_INPUTS)
+// A model stores a source or a switch in 10 bits, negated when inverted.
+static_assert(MIXSRC_LAST_TELEM <= 511, "host inputs: too many mixer sources");
+static_assert(SWSRC_LAST <= 511, "host inputs: too many switch sources");
+static_assert(MAX_HOST_ANALOG_BUTTONS <= MAX_HOST_BUTTONS, "host inputs: analog buttons");
+#endif
 
 enum SrcTypes {
   SRC_INPUT = 1 << 0,

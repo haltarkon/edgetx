@@ -10,6 +10,7 @@
 // tables, and the schema from the generated YamlNode tree
 // (storage/yaml/yaml_datastructs_<radio>.cpp).
 
+#include "etx_host_inputs.h"
 #include "etx_json.h"
 #include "etx_port_impl.h"
 
@@ -36,6 +37,9 @@
 #endif
 #ifndef ETX_TARGET_NAME
 #define ETX_TARGET_NAME FLAVOUR
+#endif
+#ifndef ETX_BASE_NAME
+#define ETX_BASE_NAME FLAVOUR
 #endif
 
 #if defined(ETX_NO_EXPORT_ATTR)  // size analysis builds: exports chosen at link time
@@ -276,6 +280,12 @@ static const char* sourceGroup(int i)
 #if defined(PCBHORUS)
   if (i >= MIXSRC_FIRST_SPACEMOUSE && i <= MIXSRC_LAST_SPACEMOUSE) return "spacemouse";
 #endif
+#if defined(HOST_INPUTS)
+  // What the control is on the host: pad_axis, mouse_axis, pad_button.
+  if (i >= MIXSRC_FIRST_HOST_AXIS && i <= MIXSRC_LAST_HOST_AXIS)
+    return etxHostAxisKind(i - MIXSRC_FIRST_HOST_AXIS)[0] == 'p' ? "pad_axis" : "mouse_axis";
+  if (i >= MIXSRC_FIRST_HOST_BUTTON && i <= MIXSRC_LAST_HOST_BUTTON) return "pad_button";
+#endif
   if (i == MIXSRC_MIN || i == MIXSRC_MAX) return "minmax";
 #if defined(LUMINOSITY_SENSOR)
   if (i == MIXSRC_LIGHT) return "light";
@@ -303,6 +313,13 @@ static const char* switchGroupName(int i)
   if (i <= SWSRC_LAST_SWITCH) return "switch";
   if (i <= SWSRC_LAST_MULTIPOS_SWITCH) return "multipos";
   if (i <= SWSRC_LAST_TRIM) return "trim";
+#if defined(HOST_INPUTS)
+  if (i <= SWSRC_LAST_HOST_BUTTON) {
+    // pad_button, mouse_button, key
+    const char* kind = etxHostButtonKind(i - SWSRC_FIRST_HOST_BUTTON);
+    return kind[0] == 'p' ? "pad_button" : kind[0] == 'm' ? "mouse_button" : "key";
+  }
+#endif
   if (i <= SWSRC_LAST_LOGICAL_SWITCH) return "logical";
   if (i <= SWSRC_ONE) return "on";
   if (i <= SWSRC_LAST_FLIGHT_MODE) return "flight_mode";
@@ -337,8 +354,18 @@ static void appendSources(std::string& out)
     }
     out += ",\"group\":";
     appendJsonString(out, sourceGroup(i));
+    bool avail = isSourceAvailable(i);
+#if defined(HOST_INPUTS)
+    // The radio's own source menus (gui_common.cpp) know nothing of host
+    // inputs; here they are what the radio is made of.
+#if defined(ETX_VIRTUAL_RADIO)
+    // What the base radio has that this one does not: its tilt sensor.
+    if (!strcmp(sourceGroup(i), "tilt") || !strcmp(sourceGroup(i), "spacemouse")) avail = false;
+#endif
+    if (i >= MIXSRC_FIRST_HOST_AXIS && i <= MIXSRC_LAST_HOST_BUTTON) avail = true;
+#endif
     out += ",\"avail\":";
-    appendBool(out, isSourceAvailable(i));
+    appendBool(out, avail);
     out.push_back('}');
   }
   out += "]";
@@ -429,6 +456,10 @@ static void appendSwitches(std::string& out)
 {
   int physical = switchGetMaxSwitches();
   int all = switchGetMaxAllSwitches();
+#if defined(ETX_VIRTUAL_RADIO)
+  // The base radio's flex switches are pots set up as switches: no pots here.
+  all = physical;
+#endif
   out += "[";
   for (int i = 0; i < all; i++) {
     if (i) out.push_back(',');
@@ -493,6 +524,63 @@ static void appendTrims(std::string& out)
   out += "]";
 }
 
+// The host inputs (hal/host_inputs.h): `index` for etx_set_host_axis /
+// etx_set_host_button, `name` the YAML token (a key's is its
+// KeyboardEvent.code), `kind` what it is on the host and `n` its number there
+// (a controller's axis or button number from 0, MouseEvent.button, the
+// position among the keys), and the mixer `source` / `switchSource` it is.
+static void appendHostAxes(std::string& out)
+{
+  out += "[";
+#if defined(HOST_INPUTS)
+  for (int i = 0; i < hostInputsGetMaxAxes(); i++) {
+    if (i) out.push_back(',');
+    out += "{\"index\":";
+    appendInt(out, i);
+    out += ",\"name\":";
+    appendJsonString(out, hostAxisGetName(i));
+    out += ",\"label\":";
+    appendJsonString(out, hostAxisGetLabel(i));
+    out += ",\"kind\":";
+    appendJsonString(out, etxHostAxisKind(i));
+    out += ",\"n\":";
+    appendInt(out, etxHostAxisOrdinal(i));
+    out += ",\"source\":";
+    appendInt(out, MIXSRC_FIRST_HOST_AXIS + i);
+    out.push_back('}');
+  }
+#endif
+  out += "]";
+}
+
+static void appendHostButtons(std::string& out)
+{
+  out += "[";
+#if defined(HOST_INPUTS)
+  for (int i = 0; i < hostInputsGetMaxButtons(); i++) {
+    if (i) out.push_back(',');
+    out += "{\"index\":";
+    appendInt(out, i);
+    out += ",\"name\":";
+    appendJsonString(out, hostButtonGetName(i));
+    out += ",\"label\":";
+    appendJsonString(out, hostButtonGetLabel(i));
+    out += ",\"kind\":";
+    appendJsonString(out, etxHostButtonKind(i));
+    out += ",\"n\":";
+    appendInt(out, etxHostButtonOrdinal(i));
+    out += ",\"switchSource\":";
+    appendInt(out, SWSRC_FIRST_HOST_BUTTON + i);
+    if (i < MAX_HOST_ANALOG_BUTTONS) {
+      out += ",\"source\":";
+      appendInt(out, MIXSRC_FIRST_HOST_BUTTON + i);
+    }
+    out.push_back('}');
+  }
+#endif
+  out += "]";
+}
+
 static void appendKeys(std::string& out)
 {
   out += "[";
@@ -522,7 +610,12 @@ static std::string describe()
   appendJsonString(out, VERSION);
   out += "},\"radio\":{\"target\":";
   appendJsonString(out, ETX_TARGET_NAME);
+  // The radio EdgeTX is configured as, and what it writes as a radio.yml's
+  // `board:` -- the same on a real radio; the virtual radio is configured as
+  // one and writes its own name.
   out += ",\"flavour\":";
+  appendJsonString(out, ETX_BASE_NAME);
+  out += ",\"board\":";
   appendJsonString(out, FLAVOUR);
   out += ",\"lcd\":{\"w\":";
   appendInt(out, LCD_W);
@@ -548,6 +641,13 @@ static std::string describe()
   appendInt(out, inputMappingGetMaxChannelOrder());
   out += ",\"throttleStick\":";
   appendInt(out, inputMappingGetThrottle());
+  // A radio that exists only here: its pots and switches are host inputs.
+  out += ",\"virtual\":";
+#if defined(ETX_VIRTUAL_RADIO)
+  appendBool(out, true);
+#else
+  appendBool(out, false);
+#endif
   out += "}";
 
   out += ",\"capacities\":{";
@@ -572,8 +672,14 @@ static std::string describe()
       {"sticks", adcGetMaxInputs(ADC_INPUT_MAIN)},
       {"flexInputs", adcGetMaxInputs(ADC_INPUT_FLEX)},
       {"switches", switchGetMaxSwitches()},
+#if defined(ETX_VIRTUAL_RADIO)
+      // The base radio's flex switches are pots set up as switches: no pots here.
+      {"allSwitches", switchGetMaxSwitches()},
+      {"flexSwitches", 0},
+#else
       {"allSwitches", switchGetMaxAllSwitches()},
       {"flexSwitches", MAX_FLEX_SWITCHES},
+#endif
       {"functionSwitches", NUM_FUNCTIONS_SWITCHES},
 #if defined(FUNCTION_SWITCHES)
       {"functionSwitchGroups", NUM_FUNCTIONS_GROUPS},
@@ -614,6 +720,10 @@ static std::string describe()
   appendTrims(out);
   out += ",\"keys\":";
   appendKeys(out);
+  out += ",\"hostAxes\":";
+  appendHostAxes(out);
+  out += ",\"hostButtons\":";
+  appendHostButtons(out);
   out += ",\"sources\":";
   appendSources(out);
   out += ",\"switchSources\":";

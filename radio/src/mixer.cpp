@@ -406,6 +406,15 @@ getvalue_t _getValue(mixsrc_t i, bool* valid)
   }
 #endif
 
+#if defined(HOST_INPUTS)
+  else if (i >= MIXSRC_FIRST_HOST_AXIS && i <= MIXSRC_LAST_HOST_AXIS) {
+    return hostAxisGetValue(i - MIXSRC_FIRST_HOST_AXIS);
+  }
+  else if (i >= MIXSRC_FIRST_HOST_BUTTON && i <= MIXSRC_LAST_HOST_BUTTON) {
+    return hostButtonGetValue(i - MIXSRC_FIRST_HOST_BUTTON);
+  }
+#endif
+
 #if defined(VOICE_CONTROL_SENSOR)
   else if (i == MIXSRC_VGR || i == MIXSRC_VFL) {
     getvalue_t voiceVal = 0;

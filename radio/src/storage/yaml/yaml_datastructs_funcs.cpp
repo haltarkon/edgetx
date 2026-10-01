@@ -304,6 +304,16 @@ static uint32_t r_mixSrcRaw(const YamlNode* node, const char* val, uint8_t val_l
     }
 #endif
 
+#if defined(HOST_INPUTS)
+    {
+      int host = hostAxisLookupIdx(val, val_len);
+      if (host >= 0) return host + MIXSRC_FIRST_HOST_AXIS;
+      host = hostButtonLookupIdx(val, val_len);
+      if (host >= 0 && host < MAX_HOST_ANALOG_BUTTONS)
+        return host + MIXSRC_FIRST_HOST_BUTTON;
+    }
+#endif
+
     auto idx = analogLookupCanonicalIdx(ADC_INPUT_MAIN, val, val_len);
     if (idx >= 0) return idx + MIXSRC_FIRST_STICK;
 
@@ -423,6 +433,16 @@ static bool w_mixSrcRaw(const YamlNode* node, uint32_t val, yaml_writer_func wf,
 #if defined(VOICE_CONTROL_SENSOR)
     else if (CI1302_voiceIntegrationMixSrcWriteYaml(val, &str)) {
       // handled
+    }
+#endif
+#if defined(HOST_INPUTS)
+    else if (val >= MIXSRC_FIRST_HOST_AXIS
+             && val <= MIXSRC_LAST_HOST_AXIS) {
+        str = hostAxisGetName(val - MIXSRC_FIRST_HOST_AXIS);
+    }
+    else if (val >= MIXSRC_FIRST_HOST_BUTTON
+             && val <= MIXSRC_LAST_HOST_BUTTON) {
+        str = hostButtonGetName(val - MIXSRC_FIRST_HOST_BUTTON);
     }
 #endif
     else if (val >= MIXSRC_FIRST_TIMER
@@ -1393,6 +1413,14 @@ static uint32_t r_swtchSrc(const YamlNode* node, const char* val, uint8_t val_le
         val_len--;
     }
 
+#if defined(HOST_INPUTS)
+    int host = hostButtonLookupIdx(val, val_len);
+    if (host >= 0) {
+      ival = SWSRC_FIRST_HOST_BUTTON + host;
+      return neg ? -ival : ival;
+    }
+#endif
+
     if (val_len > 3 && ((val[0] == 'S' && val[1] >= 'W')
 	    || (val[0] == 'F' && val[1] >= 'L'))
         && val[2] >= '0' && val[2] <= '9'
@@ -1510,6 +1538,14 @@ static bool w_swtchSrc_unquoted(const YamlNode* node, uint32_t val,
       auto trim = trimSwitchNames[sval - SWSRC_FIRST_TRIM];
       return wf(opaque, trim, strlen(trim));
         
+#if defined(HOST_INPUTS)
+    } else if (sval <= SWSRC_LAST_HOST_BUTTON) {
+
+      str = hostButtonGetName(sval - SWSRC_FIRST_HOST_BUTTON);
+      if (!str) return true;
+      return wf(opaque, str, strlen(str));
+
+#endif
     } else if (sval <= SWSRC_LAST_LOGICAL_SWITCH) {
 
       wf(opaque, "L", 1);

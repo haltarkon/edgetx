@@ -29,6 +29,16 @@ endif()
 
 set(ETX_API_VERSION "1" CACHE STRING "edgetx-headless C API version")
 
+# The virtual radio: a radio that exists only as this module. It is configured
+# as a real one (the options name it: -DPCB=X10 -DPCBREV=TX16S), so that every
+# size and every model field is one EdgeTX ships, and differs in its hardware:
+# two gimbals with their trims, and instead of pots and switches the host's own
+# controls -- controller axes and buttons, a mouse, keyboard keys -- as mixer
+# sources and switches (HOST_INPUTS, radio/src/hal/host_inputs.h; the tables
+# are src/etx_board.cpp and src/etx_host_inputs.cpp). The module is named
+# edgetx-virtual.wasm.
+option(ETX_VIRTUAL_RADIO "Build the virtual radio (host inputs) instead of the configured one" OFF)
+
 function(_etx_filter_options out_var)
   # Remove the options selecting the std::thread port; keep everything else in order.
   set(result "")
@@ -55,6 +65,11 @@ function(_etx_add_headless_target)
   get_directory_property(ETX_TARGET_NAME DIRECTORY "${RADIO_SRC_DIR}" DEFINITION FLAVOUR)
   if(NOT ETX_TARGET_NAME)
     message(FATAL_ERROR "edgetx-headless: radio/src did not set FLAVOUR")
+  endif()
+  # The radio EdgeTX is configured as; the virtual radio is named after itself.
+  set(ETX_BASE_NAME "${ETX_TARGET_NAME}")
+  if(ETX_VIRTUAL_RADIO)
+    set(ETX_TARGET_NAME "virtual")
   endif()
 
   # --- 1. radiolib_native -> single-threaded port -------------------------------
@@ -95,6 +110,14 @@ function(_etx_add_headless_target)
     endforeach()
     target_compile_options(${tgt} PRIVATE "SHELL:-include ${port_header}")
     target_compile_definitions(${tgt} PRIVATE ETX_HEADLESS=1)
+    if(ETX_VIRTUAL_RADIO)
+      target_compile_definitions(${tgt} PRIVATE ETX_VIRTUAL_RADIO=1 HOST_INPUTS=1)
+      # FLAVOUR is what EdgeTX writes as a radio.yml's `board:` (and into its
+      # version strings): this radio's settings are not a TX16S's. radio/src
+      # defines it for the directory; options follow definitions on the
+      # command line, so the redefinition here is the one that holds.
+      target_compile_options(${tgt} PRIVATE -UFLAVOUR "-DFLAVOUR=\"virtual\"")
+    endif()
   endforeach()
 
   # --- 2. simulator drivers: keep only the plain stubs --------------------------
@@ -117,6 +140,7 @@ function(_etx_add_headless_target)
     ${ETX_WASM_DIR}/src/etx_port.cpp
     ${ETX_WASM_DIR}/src/etx_fs.cpp
     ${ETX_WASM_DIR}/src/etx_board.cpp
+    ${ETX_WASM_DIR}/src/etx_host_inputs.cpp
     ${ETX_WASM_DIR}/src/etx_api.cpp
     ${ETX_WASM_DIR}/src/etx_describe.cpp
   )
@@ -125,7 +149,8 @@ function(_etx_add_headless_target)
     APPEND PROPERTY COMPILE_DEFINITIONS
       ETX_API_VERSION=${ETX_API_VERSION}
       ETX_EDGETX_COMMIT="${ETX_EDGETX_COMMIT}"
-      ETX_TARGET_NAME="${ETX_TARGET_NAME}")
+      ETX_TARGET_NAME="${ETX_TARGET_NAME}"
+      ETX_BASE_NAME="${ETX_BASE_NAME}")
   # simu_switches.inc & friends are generated next to radio/src's binary dir
   target_include_directories(radiolib_native PRIVATE ${simu_dir})
 

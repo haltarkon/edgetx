@@ -749,6 +749,11 @@ bool getSwitch(swsrc_t swtch, uint8_t flags)
     idx = (inputMappingConvertMode(idx/2) << 1) + (idx & 1);
     result = trimDown(idx);
   }
+#if defined(HOST_INPUTS)
+  else if (cs_idx <= SWSRC_LAST_HOST_BUTTON) {
+    result = hostButtonGetState(cs_idx - SWSRC_FIRST_HOST_BUTTON);
+  }
+#endif
   else if (cs_idx == SWSRC_RADIO_ACTIVITY) {
     result = (inactivity.counter < 2);
   }

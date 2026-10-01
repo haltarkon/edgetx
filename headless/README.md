@@ -4,19 +4,27 @@ This directory builds **EdgeTX itself** — the radio firmware in this repositor
 WebAssembly module per radio, without its screen, its tasks or its SD card: the model YAML reader
 and writer, the analog/switch/trim input pipeline, inputs, mixes, curves, outputs, logical
 switches, special functions, global variables, flight modes, trims and timers, exactly as the
-radio runs them. ArduConfigurator's Joystick tab drives it as a virtual EdgeTX radio (a gamepad
-moves its sticks and switches) and sends the channels it computes to an ArduPilot vehicle.
+radio runs them. ArduConfigurator's Joystick tab drives it as a virtual EdgeTX radio and sends
+the channels it computes to an ArduPilot vehicle.
 
 Nothing in the mixer is reimplemented. The files here only decide *when* EdgeTX runs what (in
 the order the radio's 10 ms interrupt, mixer task and UI task run it), stand in for the hardware
 (a virtual board), and expose a flat C API.
+
+The radio ArduConfigurator flies is not one a pilot can buy. It is the **virtual radio** (*The
+virtual radio* below): two gimbals with their trims, and instead of pots and switches the
+controls of whatever the host can read — every axis and button of a game controller, a mouse,
+every keyboard key — each a mixer source or a switch of the model under its own name (`Axis4`,
+`Btn3`, `KeyW`, `MouseX`). Any radio EdgeTX builds can still be built by name, as the plain
+EdgeTX radio it is.
 
 | file | what it is |
 |---|---|
 | `cmake/inject.cmake` | the CMake glue injected into EdgeTX's own build (see *How it is built*) |
 | `src/etx_api.cpp` | the C API, the tick, the event log, link-time wrappers |
 | `src/etx_describe.cpp` | `etx_describe_json` / `etx_schema_json` |
-| `src/etx_board.cpp` | the virtual board: ADC, switches, keys, trims, the rest of the simulator's board stubs |
+| `src/etx_board.cpp` | the virtual board: ADC, switches, keys, trims, the rest of the simulator's board stubs; the virtual radio's hardware tables |
+| `src/etx_host_inputs.cpp`, `src/etx_host_inputs.h` | the virtual radio's host inputs: which control each one is, its name, its last value |
 | `src/etx_fs.cpp` | memory files behind EdgeTX's FatFs calls |
 | `src/etx_port.h`, `src/etx_port.cpp` | a single-threaded port of EdgeTX's `os/` layer |
 | `src/etx_json.h`, `src/etx_port_impl.h`, `src/etx_link.cpp` | internal helpers |
@@ -29,11 +37,27 @@ exercise it.
 
 This is the `headless` branch of <https://github.com/haltarkon/edgetx-wasm>, a fork of
 [EdgeTX](https://github.com/EdgeTX/edgetx). The branch is upstream EdgeTX plus this directory and
-nothing else: **no upstream file is modified** — the build is hooked into EdgeTX's own CMake
-project from outside (*How it is built*) — so the branch rebases onto any newer upstream EdgeTX
-without conflicts. Whether the glue still builds against that EdgeTX is for the build to say (a
-newer EdgeTX that makes code reachable which the headless link leaves out shows up as a non-WASI
-import, step 3 of *How it is built*).
+one small feature added to EdgeTX itself, **host inputs** (`HOST_INPUTS`, *The virtual radio*):
+a new header, `radio/src/hal/host_inputs.h`, and a few lines in five upstream files, every one
+of them inside `#if defined(HOST_INPUTS)` and placed beside the hooks upstream has for its own
+optional input class (`VOICE_CONTROL_SENSOR`):
+
+| upstream file | what `HOST_INPUTS` adds |
+|---|---|
+| `radio/src/dataconstants.h` | the source ranges `MIXSRC_FIRST_HOST_AXIS..`, `MIXSRC_FIRST_HOST_BUTTON..`, `SWSRC_FIRST_HOST_BUTTON..`, and the assertion that sources and switches still fit a model's 10-bit fields |
+| `radio/src/mixer.cpp` | `getValue()` of a host axis or button |
+| `radio/src/switches.cpp` | `getSwitch()` of a host button |
+| `radio/src/strhelpers.cpp` | their labels (`getSourceString()`, `getSwitchPositionName()`) |
+| `radio/src/storage/yaml/yaml_datastructs_funcs.cpp` | their tokens in a model file, read and written |
+
+A build without `HOST_INPUTS` — every radio but the virtual one — compiles exactly upstream's
+code. Nothing else of upstream is touched: the headless build itself is hooked into EdgeTX's own
+CMake project from outside (*How it is built*). Rebasing onto a newer upstream EdgeTX therefore
+meets conflicts only where upstream rewrote the lines around those hooks. Whether the glue still
+builds against that EdgeTX is for the build to say (a newer EdgeTX that makes code reachable
+which the headless link leaves out shows up as a non-WASI import, step 3 of *How it is built*;
+one that adds sources until they no longer fit ten bits beside the host inputs fails the
+assertion in `dataconstants.h`).
 
 ## Building
 
@@ -44,8 +68,8 @@ own `scripts/edgetx-wasm.mjs`, from the app's checkout:
 
 ```bash
 npm run edgetx:wasm -- --setup     # once: WASI SDK 25.0 (SHA-256 pinned) + a Python venv
-npm run edgetx:wasm                # tx16s and gx12 -> public/edgetx/edgetx-<radio>.wasm
-npm run edgetx:wasm -- gx12        # one radio (any name tools/build-common.sh knows)
+npm run edgetx:wasm                # the virtual radio -> public/edgetx/edgetx-virtual.wasm
+npm run edgetx:wasm -- gx12        # a real radio instead (any name tools/build-common.sh knows)
 npm run edgetx:wasm -- --package   # + public/edgetx/manifest.json (size, SHA-256, commit, API)
 npm run edgetx:wasm -- --out dir   # somewhere else;  --jobs n  compile parallelism (default 3)
 npm run edgetx:wasm:smoke          # drive every built module end to end under Node
@@ -65,7 +89,7 @@ The modules and their manifest **are committed** to ArduConfigurator (`public/ed
 Nothing downstream builds them: `vendor/edgetx` is an `update = none` submodule, so neither
 Cloudflare's build clone nor CI fetches this repository, and the EdgeTX mode of the Joystick tab
 needs them in every build — the hosted one, the desktop installers and a plain checkout's dev
-server. They are small (about 200 KB per radio, 80 KB gzipped), reproducible — builds contain no
+server. They are small (about 220 KB, 90 KB gzipped), reproducible — builds contain no
 dates or local paths, and the manifest names the commit of this branch each one was built from —
 and change only when the pinned commit does, so the binary history they add is a few hundred
 kilobytes per EdgeTX update. ArduConfigurator's `test/edgetxModules.test.js` keeps them honest:
@@ -101,21 +125,65 @@ python3 -m venv "$TOOLS/python"
   pydantic_core==2.46.5 annotated-types==0.8.0 typing-inspection==0.4.4 \
   typing_extensions==4.16.0 pillow==12.3.0 lz4==4.4.5
 
-# one radio, with the options tools/build-common.sh gives it (gx12: -DPCB=X7 -DPCBREV=GX12,
-# tx16s: -DPCB=X10 -DPCBREV=TX16S)
-cmake -S . -B "$TOOLS/build-gx12" \
+# the virtual radio: EdgeTX configured as a TX16S (the options tools/build-common.sh gives it,
+# -DPCB=X10 -DPCBREV=TX16S) with -DETX_VIRTUAL_RADIO=ON. A real radio is its own options
+# without that one (gx12: -DPCB=X7 -DPCBREV=GX12).
+cmake -S . -B "$TOOLS/build-virtual" \
   -DCMAKE_TOOLCHAIN_FILE="$SDK/share/cmake/wasi-sdk-p1.cmake" -DWASI_SDK_PREFIX="$SDK" \
   -DCMAKE_BUILD_TYPE=Release -DEdgeTX_SUPERBUILD=OFF -DNATIVE_BUILD=ON -DETX_API_VERSION=1 \
-  -DPCB=X7 -DPCBREV=GX12 \
+  -DPCB=X10 -DPCBREV=TX16S -DETX_VIRTUAL_RADIO=ON \
   -DCMAKE_PROJECT_EdgeTX_INCLUDE="$PWD/headless/cmake/inject.cmake" \
   -DPython3_EXECUTABLE="$TOOLS/python/bin/python3" \
   -DETX_EDGETX_COMMIT="$(git rev-parse HEAD | cut -c1-10)"
-cmake --build "$TOOLS/build-gx12" --target edgetx-headless --parallel 3
-# -> $TOOLS/build-gx12/edgetx-gx12.wasm
+cmake --build "$TOOLS/build-virtual" --target edgetx-headless --parallel 3
+# -> $TOOLS/build-virtual/edgetx-virtual.wasm
 ```
 
 From the commit a manifest names, with these options, the result is byte for byte the module
 whose SHA-256 that manifest records.
+
+## The virtual radio
+
+`-DETX_VIRTUAL_RADIO=ON` (`cmake/inject.cmake`) builds a radio that exists only as this module,
+`edgetx-virtual.wasm`. EdgeTX is configured as a real radio — a TX16S — so that every size and
+every field of a model is one EdgeTX ships and its generated YAML tables are the ones in the
+tree; what differs is the hardware:
+
+- **Two gimbals with their trim buttons**, and nothing else of its own: the hardware tables in
+  `src/etx_board.cpp` replace the generated ones (four sticks `LH`, `LV`, `RV`, `RH`; no flex
+  inputs; no switches; the base radio's six trims). The sticks are what EdgeTX gives a meaning
+  of its own — the stick mode, trims, the throttle check, the model a radio creates — so they
+  stay EdgeTX's, set with `etx_set_analog`.
+- **Host inputs** (`HOST_INPUTS`, `radio/src/hal/host_inputs.h`) in place of pots and switches:
+  controls that are not wired to the radio but handed to it by the program that hosts it. Each
+  is a mixer source or a switch source of its own, named in a model file by its own token, so a
+  model reads the control under the pilot's finger with nothing assigned in between:
+
+  | | tokens | as |
+  |---|---|---|
+  | controller axes | `Axis0`..`Axis23` | sources, −1024..1024 as the host reports them (no calibration, inversion or dead zone: a line's weight and curve shape them) |
+  | mouse | `MouseX`, `MouseY`, `MouseWheel` | sources: positions the host integrates from the pointer's movement and the wheel |
+  | controller buttons | `Btn0`..`Btn23` | switches (on while pressed), and sources: how far each is pressed, −1024 released..1024 pressed — a trigger's travel |
+  | mouse buttons | `MouseLeft`, `MouseMiddle`, `MouseRight`, `Mouse4`, `Mouse5` | switches |
+  | keyboard keys | `KeyA`, `Digit1`, `Space`, `ArrowUp`, `F5`, `Numpad0`... (97) | switches; a key's token is its `KeyboardEvent.code`, the physical key whatever the layout |
+
+  `!Btn3` is the released button, as `!` negates any switch. Axes and buttons are numbered from
+  0, as the host numbers them (the Gamepad API's `axes[0]`). What a press means — held, latched,
+  one of a group — is the host's decision, made before `etx_set_host_button`: the radio sees a
+  button that is on or off.
+
+Their number is bounded by the model format, not by this code: a model stores a source or a
+switch in ten bits (±511), and the TX16S configuration already uses 452 sources and 306 switch
+sources. 27 host axes and 24 buttons-as-sources bring the sources to 503; 126 host buttons bring
+the switch sources to 432 (`radio/src/hal/host_inputs.h`, asserted in `dataconstants.h`). That
+is why only the controller's buttons are sources too, and keys and mouse buttons are switches
+only — a line reads a key through its switch (`MAX` with `swtch: "KeyW"`) or a logical switch.
+
+Its radio.yml says `board: virtual` (the build redefines `FLAVOUR`), so a file it wrote is told
+from a TX16S's, and its default settings carry no calibration for inputs it lacks. What the base
+radio has that this one does not (its tilt sensor's sources, its flex switches) is reported
+unavailable by `etx_describe_json`; a model file that names a real radio's pot or switch
+(`S1`, `SA2`) reads, as on any radio that lacks them, with those references empty.
 
 ## How it is built
 
@@ -123,7 +191,8 @@ The build (ArduConfigurator's `scripts/edgetx-wasm.mjs`, or the commands above) 
 **EdgeTX's own CMake project** for one radio with:
 
 - the options `tools/build-common.sh` gives that radio (`tx16s` → `-DPCB=X10 -DPCBREV=TX16S`,
-  `gx12` → `-DPCB=X7 -DPCBREV=GX12`), read from the script itself;
+  `gx12` → `-DPCB=X7 -DPCBREV=GX12`), read from the script itself — for the virtual radio
+  those of its base, the TX16S, plus `-DETX_VIRTUAL_RADIO=ON`;
 - the native (simulator) build EdgeTX's own WebAssembly simulator uses: `-DNATIVE_BUILD=ON
   -DEdgeTX_SUPERBUILD=OFF`, Release, with the WASI SDK's **`wasm32-wasip1`** toolchain (no
   threads);
@@ -151,7 +220,9 @@ source as an object library, with that radio's definitions) and `simu_drivers`, 
    The link uses `--import-undefined`, and ArduConfigurator's build script fails if the module
    imports anything but WASI: anything left out that is reachable after all shows up there;
 4. adds the glue sources to `radiolib_native` itself, so they compile with exactly the radio's
-   definitions, include paths and flags (the structures are shared with EdgeTX code);
+   definitions, include paths and flags (the structures are shared with EdgeTX code) — and, for
+   the virtual radio, defines `ETX_VIRTUAL_RADIO` and `HOST_INPUTS` for all of it and names the
+   module `virtual`;
 5. archives everything and links `edgetx-<radio>.wasm`, a WASI **reactor**
    (`-mexec-model=reactor`, `--gc-sections`, `--strip-all`): only what the API reaches is
    linked. The exports are the `etx_*` API, `memory`, `_initialize`, `malloc` and `free`;
@@ -169,7 +240,8 @@ source as an object library, with that radio's definitions) and `simu_drivers`, 
 | `menuMainView`, `menuViewTelemetry`, `menuChannelsView` (B&W) | INSTANT_TRIM tests which menu is shown; the stand-ins keep the menu system out and `etx_init` puts the main view "on screen" |
 | `LayoutFactory::deleteCustomScreens/TopBarWidgets`, `ViewMain::instance/getCurrentMainView` (colour) | a new model tears down screens; the radio-settings writer asks for the current screen: there are none |
 
-No EdgeTX source file is modified. The one piece of EdgeTX logic restated here is
+The build modifies no EdgeTX source file (the host inputs' hooks are in the branch, *This
+branch*). The one piece of EdgeTX logic restated here is
 `sortMixerLines()` (file-static in `storage/storage_common.cpp`): the post-load sort of mix lines
 by channel, a dozen lines.
 
@@ -245,12 +317,14 @@ number of elements written (none for `max` ≤ 0).
 | `int32 etx_set_switch(int32 index, int32 position)` | hardware switch `index`: −1 up, 0 middle, +1 down (`simuSetSwitch` convention); a function switch (CFS) button is pressed when not up |
 | `int32 etx_set_trim_key(int32 trim, int32 dir)` | hold trim button `trim` (hardware order T1 = LH, T2 = LV, T3 = RV, T4 = RH, T5...) in direction −1/+1, 0 releases; EdgeTX's key repeat and `checkTrims()` do the rest (step size, repeat, limits, flight mode, throttle trim, centre stop) |
 | `int32 etx_set_key(int32 key, int32 pressed)` | any other key (`EnumKeys`) |
+| `int32 etx_set_host_axis(int32 index, int32 value)` | *added* — host axis `index` (`describe().hostAxes[].index`) to −1024..1024 (clamped), as the host reports it. An error (−5) for an index this radio lacks: every index on a radio without host inputs |
+| `int32 etx_set_host_button(int32 index, int32 value)` | *added* — host button `index` (`describe().hostButtons[].index`) to how far it is pressed, −1024 released..1024 pressed; it is on, as a switch, above zero. The first `MAX_HOST_ANALOG_BUTTONS` also read as sources with that value |
 | `int32 etx_step(int32 ms)` | advance; returns ticks run |
 | `uint32 etx_get_time()` | `g_tmr10ms` |
 | `int32 etx_get_channels(int16*, int32)` | `channelOutputs`: −1024..1024 (±1536 with extended limits) |
 | `int32 etx_get_pulses_us(uint16*, int32)` | PPM widths in **half microseconds**: `clamp(out, ±R) + 2 × (1500 + ppmCenter)` (`pulses/ppm.cpp`) |
 | `int32 etx_get_mixer_outputs(int16*, int32)` | mixer outputs before limits (`ex_chans`) |
-| `uint32 etx_get_used_channels()` | bit n: channel n+1 has mix lines (`isChannelUsed`) |
+| `uint32 etx_get_used_channels()` | bit n: channel n+1 has a mix line the mixer runs — counted as the mixer walks the lines (a line without a source is skipped on a colour radio and ends the list on a B&W one), not with `isChannelUsed()`, which stops there on both |
 | `int32 etx_get_logical_switches(uint8*, int32)` | 0/1 per logical switch |
 | `int32 etx_get_flight_mode()` | current flight mode |
 | `int32 etx_get_gvar(int32 gv, int32 fm)` | effective GV value in `fm` (following links); `fm < 0`: current |
@@ -299,7 +373,9 @@ Each line is `{"t": <g_tmr10ms>, "ev": <kind>, ...}`:
 ### `etx_describe_json`
 
 `api`, `edgetx {commit, version}`, `radio {target, flavour, lcd, colour, surface, stickMode,
-channelOrder, channelOrders, throttleStick}`, `capacities` (outputs, mixes, expos, inputs,
+channelOrder, channelOrders, throttleStick, virtual}` (`target` is the module's radio; `flavour`
+the radio EdgeTX is configured as and `board` what it writes as a radio.yml's `board:` — on the
+virtual radio `virtual`, `tx16s` and `virtual`), `capacities` (outputs, mixes, expos, inputs,
 logicalSwitches, specialFunctions, gvars, flightModes, curves, curvePoints, pointsPerCurve,
 timers, trims, sticks, flexInputs, switches, allSwitches, flexSwitches, functionSwitches,
 functionSwitchGroups, telemetrySensors, scripts, trainerChannels, multiposPositions), `limits`,
@@ -314,13 +390,21 @@ and:
   `cfs`, `cfsIndex`;
 - `trims[]`: hardware trim `index`, `name`, the `modelTrim` it moves under the current stick mode,
   `label`, `token`; `keys[]`;
+- `hostAxes[]`, `hostButtons[]` (*added*; empty on a radio without host inputs): `index` (for
+  `etx_set_host_axis` / `etx_set_host_button`), `name` (the YAML token; a key's is its
+  `KeyboardEvent.code`), `label`, `kind` (`pad`, `mouse`, and `key` for a button), `n` (its
+  number on the host: a controller's axis or button number from 0, `MouseEvent.button`, the
+  position among the keys), and the mixer `source` it is — for a button the `switchSource`, and
+  a `source` too where it reads as one;
 - `sources[]` — every mixer source index: `i`, `token` (exactly as model YAML writes it, from
   EdgeTX's encoder, and checked to read back to `i`; `null` where this radio cannot write it — a
   switch or pot it does not have, or GX12's `GR4`), `label` (English, as the radio shows it; arrows
-  as Unicode), `icon` (stick, pot, slider, switch, trim, input, ...), `group`, `avail` (offered by
-  the radio's source menus for the current radio settings and model);
-- `switchSources[]` — every switch source: `i`, `token`, `label`, `group`, `avail` (bit 0 mixes,
-  1 logical switches, 2 model special functions, 3 radio special functions);
+  as Unicode), `icon` (stick, pot, slider, switch, trim, input, ...), `group` (the host inputs':
+  `pad_axis`, `mouse_axis`, `pad_button`), `avail` (offered by the radio's source menus for the
+  current radio settings and model; a host input always is);
+- `switchSources[]` — every switch source: `i`, `token`, `label`, `group` (the host buttons':
+  `pad_button`, `mouse_button`, `key`), `avail` (bit 0 mixes, 1 logical switches, 2 model special
+  functions, 3 radio special functions);
 - `enums`: `logicalSwitchFunctions`, `specialFunctions`, `mixMultiplex`, `timerModes`,
   `swashTypes` (value, YAML token, label), `curveRefTypes`, `curveFunctions`, `curveTypes`,
   `sounds`, `telemetryUnits` (*added*: `STR_VTELEMUNIT` by a sensor's `unit`, 0..`UNIT_MAX`; unit 0
@@ -351,10 +435,12 @@ In ArduConfigurator, `src/joystick/edgetx/engine.js` loads the module and wraps 
 ```js
 import { EdgeTxEngine } from "@/joystick/edgetx/engine.js";
 
-const engine = await EdgeTxEngine.load(fetch("/edgetx/edgetx-tx16s.wasm"));
+const engine = await EdgeTxEngine.load(fetch("/edgetx/edgetx-virtual.wasm"));
 engine.loadModelYaml(text);          // throws EdgeTxEngineError with .code
 engine.resetRuntime();
 engine.setAnalog(1, 1024);           // Mode 2: LV (throttle) up
+engine.setHostAxis(4, -512);         // Axis4 a quarter of the way down
+engine.setHostButton(3, 1024);       // Btn3 pressed
 engine.step(16.67);                 // fractions of a ms are carried to the next step
 engine.getPulsesUs();                // Float64Array, µs per channel
 engine.pollEvents();                 // [{ t, ev, ... }]

@@ -501,6 +501,11 @@ char *getSwitchPositionName(char *dest, swsrc_t idx, bool defaultOnly)
     s = strAppend(s, getTrimLabel(idx / 2));
     *s++ = idx & 1 ? '+' : '-';
     *s = '\0';
+#if defined(HOST_INPUTS)
+  } else if (idx <= SWSRC_LAST_HOST_BUTTON) {
+    const char* label = hostButtonGetLabel(idx - SWSRC_FIRST_HOST_BUTTON);
+    strcpy(s, label ? label : "");
+#endif
   } else if (idx <= SWSRC_LAST_LOGICAL_SWITCH) {
     *s++ = 'L';
     strAppendUnsigned(s, idx - SWSRC_FIRST_LOGICAL_SWITCH + 1, 2);
@@ -736,6 +741,14 @@ char *getSourceString(char (&destRef)[L], mixsrc_t idx, bool defaultOnly)
   else if (idx <= MIXSRC_LAST_SPACEMOUSE) {
     idx -= MIXSRC_FIRST_SPACEMOUSE;
     getStringAtIndex(dest, STR_SM_VSRCRAW, idx);
+  }
+#endif
+#if defined(HOST_INPUTS)
+  else if (idx <= MIXSRC_LAST_HOST_BUTTON) {
+    const char* label = idx <= MIXSRC_LAST_HOST_AXIS
+                            ? hostAxisGetLabel(idx - MIXSRC_FIRST_HOST_AXIS)
+                            : hostButtonGetLabel(idx - MIXSRC_FIRST_HOST_BUTTON);
+    strncpy(dest, label ? label : "", dest_len - 1);
   }
 #endif
   else if (idx == MIXSRC_MIN) {

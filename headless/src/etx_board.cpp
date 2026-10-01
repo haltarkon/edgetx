@@ -9,10 +9,20 @@
 // radio's hardware tables are EdgeTX's, generated from its JSON hardware
 // definition (hal_adc_inputs.inc, simu_switches.inc).
 //
+// The virtual radio (ETX_VIRTUAL_RADIO, cmake/inject.cmake) is the exception:
+// a radio that exists only here. It is built with a real radio's configuration
+// (so every size and every model field is one EdgeTX already ships) but with
+// the hardware tables below instead of the generated ones: two gimbals with
+// their trim buttons, and no pots or switches at all. What a pilot holds
+// besides the sticks are the host's own controls -- controller axes and
+// buttons, a mouse, keyboard keys -- which reach the mixer as host inputs
+// (etx_host_inputs.cpp, radio/src/hal/host_inputs.h).
+//
 // The simulator's own drivers are not linked because they carry the
 // simulator's WASM export/import attributes (targets/simu/simulib.h), which
 // would export that API from this module and keep its whole firmware alive.
 
+#include "etx_host_inputs.h"
 #include "etx_port_impl.h"
 
 #include "edgetx.h"
@@ -25,7 +35,26 @@
 
 // ---- analog inputs ----------------------------------------------------------
 
+#if defined(ETX_VIRTUAL_RADIO)
+// As hal_adc_inputs.inc is generated: name, canonical (YAML) name, label.
+static const etx_hal_adc_input_t _main_inputs[] = {
+    {"LH", "Rud", STR_STICK_NAMES0},
+    {"LV", "Ele", STR_STICK_NAMES1},
+    {"RV", "Thr", STR_STICK_NAMES2},
+    {"RH", "Ail", STR_STICK_NAMES3},
+};
+static const etx_hal_adc_input_t _vbat_inputs[] = {{"VBAT", nullptr, nullptr}};
+static const etx_hal_adc_input_t _rtc_bat_inputs[] = {{"RTC_BAT", nullptr, nullptr}};
+
+// { count, offset, inputs } for main, flex, vbat, rtc_bat, lux, then all.
+static const etx_hal_adc_inputs_t _hal_inputs[] = {
+    {4, 0, _main_inputs}, {0, 4, nullptr}, {1, 4, _vbat_inputs},
+    {1, 5, _rtc_bat_inputs}, {0, 6, nullptr}, {6, 0, nullptr},
+};
+constexpr potconfig_t _pot_default_config = 0;
+#else
 #include "hal_adc_inputs.inc"
+#endif
 
 static uint16_t s_raw[MAX_ANALOG_INPUTS];
 
@@ -96,7 +125,13 @@ struct hw_switch_def {
 #endif
 };
 
+#if defined(ETX_VIRTUAL_RADIO)
+// No switches: the entry only gives the table a size.
+const hw_switch_def _switch_defs[] = {{"", SWITCH_HW_2POS, SWITCH_NONE}};
+constexpr uint8_t n_switches = 0;
+#else
 #include "simu_switches.inc"
+#endif
 
 // -1 up, 0 middle, +1 down: the convention of EdgeTX's simuSetSwitch().
 static int8_t s_switches[MAX_SWITCHES];
@@ -123,10 +158,19 @@ SwitchHwPos boardSwitchGetPosition(uint8_t idx)
   return s_switches[idx] == 0 ? SWITCH_HW_MID : SWITCH_HW_DOWN;
 }
 
-const char* boardSwitchGetName(uint8_t idx) { return _switch_defs[idx].name; }
-SwitchHwType boardSwitchGetType(uint8_t idx) { return _switch_defs[idx].type; }
+const char* boardSwitchGetName(uint8_t idx)
+{
+  return idx < n_switches ? _switch_defs[idx].name : nullptr;
+}
+SwitchHwType boardSwitchGetType(uint8_t idx)
+{
+  return idx < n_switches ? _switch_defs[idx].type : SWITCH_HW_2POS;
+}
 uint8_t boardGetMaxSwitches() { return n_switches; }
-SwitchConfig boardSwitchGetDefaultConfig(uint8_t idx) { return _switch_defs[idx].defaultType; }
+SwitchConfig boardSwitchGetDefaultConfig(uint8_t idx)
+{
+  return idx < n_switches ? _switch_defs[idx].defaultType : SWITCH_NONE;
+}
 
 #if defined(FUNCTION_SWITCHES)
 bool boardIsCustomSwitch(uint8_t idx)
@@ -196,6 +240,9 @@ void etxBoardInit()
   // Every stick and pot starts centred (2048 on the 0..4096 scale).
   for (int i = 0; i < MAX_ANALOG_INPUTS; i++) s_raw[i] = 2048;
   etxBoardReleaseAll();
+#if defined(HOST_INPUTS)
+  etxHostInputsReset();
+#endif
   adcInit(&etx_adc_driver);
   switchInit();
 }
